@@ -118,17 +118,17 @@ function PresentationLayout({
           )}
           {isHandRaised && (
             <div
-              className="absolute top-2 left-2 p-1.5 rounded-full bg-amber-500/20 border border-amber-400/30 text-amber-300"
+              className="absolute top-3 left-3 p-1.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 shadow-[0_0_15px_rgba(251,191,36,0.3)]"
               title="Hand raised"
             >
-              <Hand className="w-4 h-4" />
+              <Hand className="w-3 h-3" />
             </div>
           )}
           <div
-            className="absolute bottom-1 left-1 px-1 py-0.5 bg-black/60 border border-white/5 rounded text-xs"
-            style={{ fontWeight: 500 }}
+            className="absolute bottom-3 left-3 bg-black/70 backdrop-blur-sm border border-[#FEFCD9]/10 rounded-full px-3 py-1.5 flex items-center gap-2 text-[10px]"
+            style={{ fontFamily: "'PolySans Mono', monospace" }}
           >
-            You
+            <span className="font-medium text-[#FEFCD9] uppercase tracking-wide">You</span>
           </div>
         </div>
 
