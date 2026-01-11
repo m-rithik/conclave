@@ -628,9 +628,7 @@ export function useMeetSocket({
     if (!pendingProducersRef.current.size) return;
     const pending = Array.from(pendingProducersRef.current.values());
     pendingProducersRef.current.clear();
-    for (const producerInfo of pending) {
-      await consumeProducer(producerInfo);
-    }
+    await Promise.all(pending.map((producerInfo) => consumeProducer(producerInfo)));
   }, [pendingProducersRef, consumeProducer]);
 
   const joinRoomInternal = useCallback(
@@ -682,18 +680,23 @@ export function useMeetSocket({
 
               const shouldProduce = !!stream && !joinOptions.isGhost;
 
-              if (shouldProduce) {
-                await createProducerTransport(socket, device);
-              }
-              await createConsumerTransport(socket, device);
+              await Promise.all([
+                shouldProduce
+                  ? createProducerTransport(socket, device)
+                  : Promise.resolve(),
+                createConsumerTransport(socket, device),
+              ]);
 
-              if (shouldProduce && stream) {
-                await produce(stream);
-              }
+              const producePromise =
+                shouldProduce && stream
+                  ? produce(stream)
+                  : Promise.resolve();
 
-              for (const producer of response.existingProducers) {
-                await consumeProducer(producer);
-              }
+              const consumePromises = response.existingProducers.map(
+                (producer) => consumeProducer(producer)
+              );
+
+              await Promise.all([producePromise, ...consumePromises]);
               await flushPendingProducers();
 
               setConnectionState("joined");
@@ -1363,26 +1366,27 @@ export function useMeetSocket({
         isGhost: ghostEnabled,
       };
       joinOptionsRef.current = joinOptions;
-      let stream: MediaStream | null = null;
 
       try {
-        await connectSocket(targetRoomId);
-        if (!joinOptions.isGhost) {
-          stream = await requestMediaPermissions();
-          if (!stream) {
-            setConnectionState("error");
-            return;
-          }
-          localStreamRef.current = stream;
-          setLocalStream(stream);
-        } else {
-          localStreamRef.current = null;
-          setLocalStream(null);
+        const [, stream] = await Promise.all([
+          connectSocket(targetRoomId),
+          joinOptions.isGhost
+            ? Promise.resolve(null)
+            : requestMediaPermissions(),
+        ]);
+
+        if (!joinOptions.isGhost && !stream) {
+          setConnectionState("error");
+          return;
         }
+
+        localStreamRef.current = stream;
+        setLocalStream(stream);
 
         await joinRoomInternal(targetRoomId, stream, joinOptions);
       } catch (err) {
         console.error("[Meets] Error joining room:", err);
+        const stream = localStreamRef.current;
         if (stream) {
           stream.getTracks().forEach((track) => stopLocalTrack(track));
           setLocalStream(null);
