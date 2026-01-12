@@ -257,6 +257,7 @@ export default function MeetsClient({
     roomId,
     setRoomId,
     isAdmin: isAdminFlag,
+    setIsAdmin: setCurrentIsAdmin,
     user: currentUser,
     userId,
     getJoinInfo,

@@ -49,8 +49,6 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
           return;
         }
         const { userKey, userId } = identity;
-        const isHostForExistingRoom =
-          hostRequested && clientPolicy.allowHostJoin;
         const roomChannelId = getRoomChannelId(clientId, roomId);
         let room = state.rooms.get(roomChannelId);
         let createdRoom = false;
@@ -68,21 +66,26 @@ export const registerJoinRoomHandler = (context: ConnectionContext): void => {
           }
           room = await getOrCreateRoom(state, clientId, roomId);
           createdRoom = true;
-        } else {
-          if (room.getClient(userId)) {
-            Logger.warn(`User ${userId} re-joining room ${roomId}`);
-            room.removeClient(userId);
-          }
-
-          if (isHostForExistingRoom && room.cleanupTimer) {
-            Logger.info(`Host returning to room ${roomId}, cleanup cancelled.`);
-            room.stopCleanupTimer();
-          }
+        } else if (room.getClient(userId)) {
+          Logger.warn(`User ${userId} re-joining room ${roomId}`);
+          room.removeClient(userId);
         }
 
-        const isHost = createdRoom
-          ? true
-          : isHostForExistingRoom;
+        const isReturningPrimaryHost =
+          Boolean(room.hostUserKey) && room.hostUserKey === userKey;
+        const isHostForExistingRoom =
+          hostRequested &&
+          (clientPolicy.allowHostJoin || isReturningPrimaryHost);
+        const isHost = createdRoom ? true : isHostForExistingRoom;
+
+        if (isHost && !room.hostUserKey) {
+          room.hostUserKey = userKey;
+        }
+
+        if (isHostForExistingRoom && room.cleanupTimer) {
+          Logger.info(`Host returning to room ${roomId}, cleanup cancelled.`);
+          room.stopCleanupTimer();
+        }
         const requestedDisplayName = isHost ? displayNameCandidate : "";
         const displayName = requestedDisplayName || identity.displayName;
         const hasDisplayNameOverride = Boolean(requestedDisplayName);

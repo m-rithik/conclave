@@ -33,6 +33,7 @@ export class Room {
   public displayNamesByKey: Map<string, string> = new Map();
   public handRaisedByUserId: Set<string> = new Set();
   public cleanupTimer: NodeJS.Timeout | null = null;
+  public hostUserKey: string | null = null;
 
   constructor(options: RoomOptions) {
     this.id = options.id;

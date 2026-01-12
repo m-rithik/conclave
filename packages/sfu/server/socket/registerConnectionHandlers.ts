@@ -20,6 +20,7 @@ export const registerConnectionHandlers = (
     Logger.info(`Client connected: ${socket.id}`);
 
     const context = createConnectionContext(io, socket, state);
+    socket.data.context = context;
 
     registerJoinRoomHandler(context);
     registerRouterHandlers(context);

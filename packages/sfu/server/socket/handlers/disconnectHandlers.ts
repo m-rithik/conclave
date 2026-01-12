@@ -1,8 +1,19 @@
 import { Admin } from "../../../config/classes/Admin.js";
+import type { Room } from "../../../config/classes/Room.js";
 import { Logger } from "../../../utilities/loggers.js";
 import { cleanupRoom } from "../../rooms.js";
 import { emitUserLeft } from "../../notifications.js";
 import type { ConnectionContext } from "../context.js";
+import { registerAdminHandlers } from "./adminHandlers.js";
+
+const promoteNextAdmin = (room: Room): Admin | null => {
+  for (const client of room.clients.values()) {
+    if (client instanceof Admin || client.isGhost) continue;
+    Object.setPrototypeOf(client, Admin.prototype);
+    return client as Admin;
+  }
+  return null;
+};
 
 export const registerDisconnectHandlers = (
   context: ConnectionContext,
@@ -40,44 +51,80 @@ export const registerDisconnectHandlers = (
 
         if (wasAdmin) {
           if (!context.currentRoom.hasActiveAdmin()) {
-            Logger.info(
-              `Last admin left room ${roomId}. Room remains open without an admin.`,
-            );
-            if (context.currentRoom.pendingClients.size > 0) {
+            const promoted = promoteNextAdmin(context.currentRoom);
+            if (promoted) {
               Logger.info(
-                `Room ${roomId} has pending users but no admins. Notifying waiting clients.`,
+                `Promoted ${promoted.id} to admin in room ${roomId} after host disconnect.`,
               );
-              for (const pending of context.currentRoom.pendingClients.values()) {
-                pending.socket.emit("waitingRoomStatus", {
-                  message: "No one to let you in.",
-                  roomId,
-                });
+              const promotedContext = (promoted.socket as any).data
+                ?.context as ConnectionContext | undefined;
+              if (promotedContext) {
+                promotedContext.currentClient = promoted;
+                promotedContext.currentRoom = context.currentRoom;
+                registerAdminHandlers(promotedContext, { roomId });
               }
-            }
-            context.currentRoom.startCleanupTimer(() => {
-              if (state.rooms.has(roomChannelId)) {
-                const room = state.rooms.get(roomChannelId);
-                if (room) {
-                  if (room.hasActiveAdmin()) {
-                    return;
-                  }
-                  if (room.pendingClients.size > 0) {
-                    for (const pending of room.pendingClients.values()) {
-                      pending.socket.emit("waitingRoomStatus", {
-                        message: "No one to let you in.",
-                        roomId,
-                      });
-                    }
-                  }
-                  if (room.isEmpty()) {
-                    Logger.info(
-                      `Cleanup executed for room ${roomId}. Room is empty.`,
-                    );
-                    cleanupRoom(state, roomChannelId);
-                  }
+              if (context.currentRoom.cleanupTimer) {
+                context.currentRoom.stopCleanupTimer();
+              }
+              const pendingUsers = Array.from(
+                context.currentRoom.pendingClients.values(),
+              ).map((pending) => ({
+                userId: pending.userKey,
+                displayName: pending.displayName || pending.userKey,
+              }));
+              promoted.socket.emit("pendingUsersSnapshot", {
+                users: pendingUsers,
+                roomId,
+              });
+              promoted.socket.emit("hostAssigned", { roomId });
+              if (context.currentRoom.pendingClients.size > 0) {
+                for (const pending of context.currentRoom.pendingClients.values()) {
+                  pending.socket.emit("waitingRoomStatus", {
+                    message: "A host is available to let you in.",
+                    roomId,
+                  });
                 }
               }
-            });
+            } else {
+              Logger.info(
+                `Last admin left room ${roomId}. Room remains open without an admin.`,
+              );
+              if (context.currentRoom.pendingClients.size > 0) {
+                Logger.info(
+                  `Room ${roomId} has pending users but no admins. Notifying waiting clients.`,
+                );
+                for (const pending of context.currentRoom.pendingClients.values()) {
+                  pending.socket.emit("waitingRoomStatus", {
+                    message: "No one to let you in.",
+                    roomId,
+                  });
+                }
+              }
+              context.currentRoom.startCleanupTimer(() => {
+                if (state.rooms.has(roomChannelId)) {
+                  const room = state.rooms.get(roomChannelId);
+                  if (room) {
+                    if (room.hasActiveAdmin()) {
+                      return;
+                    }
+                    if (room.pendingClients.size > 0) {
+                      for (const pending of room.pendingClients.values()) {
+                        pending.socket.emit("waitingRoomStatus", {
+                          message: "No one to let you in.",
+                          roomId,
+                        });
+                      }
+                    }
+                    if (room.isEmpty()) {
+                      Logger.info(
+                        `Cleanup executed for room ${roomId}. Room is empty.`,
+                      );
+                      cleanupRoom(state, roomChannelId);
+                    }
+                  }
+                }
+              });
+            }
           } else {
             Logger.info(`Admin left room ${roomId}, but other admins remain.`);
           }

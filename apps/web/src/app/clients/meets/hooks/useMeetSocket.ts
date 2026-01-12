@@ -33,6 +33,7 @@ interface UseMeetSocketOptions {
   roomId: string;
   setRoomId: (roomId: string) => void;
   isAdmin: boolean;
+  setIsAdmin: (value: boolean) => void;
   user?: { id?: string; email?: string | null; name?: string | null };
   userId: string;
   getJoinInfo: (
@@ -87,6 +88,7 @@ export function useMeetSocket({
   roomId,
   setRoomId,
   isAdmin,
+  setIsAdmin,
   user,
   userId,
   getJoinInfo,
@@ -803,6 +805,15 @@ export function useMeetSocket({
               reject(err);
             });
 
+            socket.on(
+              "hostAssigned",
+              ({ roomId: eventRoomId }: { roomId?: string }) => {
+                if (!isRoomEvent(eventRoomId)) return;
+                setIsAdmin(true);
+                setWaitingMessage(null);
+              }
+            );
+
             socket.on("newProducer", async (data: ProducerInfo) => {
               console.log("[Meets] New producer:", data);
               await consumeProducer(data);
@@ -1241,6 +1252,7 @@ export function useMeetSocket({
       handleReconnectRef,
       getJoinInfo,
       isAdmin,
+      setIsAdmin,
       isRoomEvent,
       joinOptionsRef,
       joinRoomInternal,
